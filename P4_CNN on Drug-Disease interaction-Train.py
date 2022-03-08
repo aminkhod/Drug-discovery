@@ -15,16 +15,17 @@ import confusion_matrix_pretty_print
 from confusion_matrix_pretty_print import plot_confusion_matrix_from_data
 
 from sklearn.metrics import confusion_matrix,classification_report,precision_score,auc, precision_recall_curve, roc_curve
-from sklearn.model_selection import train_test_split
+# from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import Normalizer
 
-
-import keras
-from keras.utils import to_categorical
-from keras.models import Sequential
-from keras.layers import Dense, Conv2D, Flatten, Softmax, Dropout, MaxPooling2D
-from keras import optimizers
-from keras import metrics as kmetr
-from keras.utils import plot_model
+import tensorflow as tf
+# import keras
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, Softmax, Dropout, MaxPooling2D
+from tensorflow.keras import optimizers
+from tensorflow.keras import metrics as kmetr
+from tensorflow.keras.utils import plot_model
 
 import pydot
 
@@ -33,7 +34,7 @@ import pydot
 
 
 #### test & train split
-data = pd.read_csv('../saved F(Drug-Disease).csv')
+data = pd.read_csv('../F_Drug-Disease_SMOTE.csv')
 data.head()
 
 
@@ -61,45 +62,52 @@ data.head()
 # x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.33, shuffle=True)
 
 
-# In[17]:
+# In[6]:
 
 
-def standardize(train, test):
+dataTrain = data.iloc[int(0.3*len(data)):,:]
+dataTest = data.iloc[:int(0.3*len(data)),:]
 
 
-    mean = np.mean(train, axis=0)
-    train = train.astype(float)
-    std = np.std(train, axis=0) + 0.000001
-
-    X_train = (train - mean) / std
-    X_test = (test - mean) / std
-    return X_train, X_test
+# In[7]:
 
 
-# In[19]:
+dataTrain.shape
 
 
-dataTrain = data.iloc[int(0.3*len(data.iloc[:,2])):,:]
-dataTest = data.iloc[:int(0.3*len(data.iloc[:,2])),:]
+# In[8]:
 
 
-# In[ ]:
+dataTest.shape
 
 
-X_train = dataTrain.values[:,3:]
-y_train = dataTrain.values[:,2].astype(int)
+# In[9]:
+
+
+906/2/3
+
+
+# In[10]:
+
+
+X_train = dataTrain.values[:,:-1]
+y_train = dataTrain['y'].values.astype(int)
 trainNum = len(X_train)
 del dataTrain
 
-X_test = dataTest.values[:,3:]
-y_test = dataTest.values[:,2].astype(int)
+X_test = dataTest.values[:,:-1]
+y_test = dataTest['y'].values.astype(int)
 testNum = len(X_test)
-del dataTest
-X_train, X_test = standardize(X_train, X_test)
+del data
+
+transformer = Normalizer().fit(X_train)  # fit does nothing.
+X_train = transformer.transform(X_train)
+X_test = transformer.transform(X_test)
+
 
 #reshape data to fit model
-X_train = X_train.reshape(trainNum,16,67,1)
-X_test = X_test.reshape(testNum,16,67,1)
+X_train = X_train.reshape(trainNum,6,151,1)
+X_test = X_test.reshape(testNum,6,151,1)
 
 # y_train = y_train + 1
 # y_test  = y_test + 1
@@ -113,13 +121,7 @@ y_test = to_categorical(y_test)
 # y_test[0]
 
 
-# In[ ]:
-
-
-print(y_train[0:5], y_test[0:5])
-
-
-# In[ ]:
+# In[11]:
 
 
 # #create model
@@ -146,15 +148,16 @@ print(y_train[0:5], y_test[0:5])
 #create model
 model = Sequential()
 #add model layers
-model.add(Conv2D(64, kernel_size=4, kernel_initializer='uniform', activation='relu',                 input_shape=(16,67,1), padding='same'))
+model.add(Conv2D(64, kernel_size=4, activation='relu', padding='same',                 input_shape=(6,151,1)))
 # model.add(Conv2D(64, kernel_size=4, activation='relu', padding='same'))
 # model.add(MaxPooling2D(pool_size=(2, 2)))
 
 model.add(Conv2D(32, kernel_size=4, activation='relu', padding='same'))
 model.add(Conv2D(16, kernel_size=4, activation='relu', padding='same'))
+
+model.add(Conv2D(8, kernel_size=4, activation='relu', padding='same'))
 model.add(MaxPooling2D(pool_size=(2, 2)))
 
-model.add(Conv2D(8, kernel_size=4, activation='relu'))
 model.add(Flatten())
 model.add(Dense( 32, activation='relu'))
 model.add(Dropout(0.1))
@@ -164,22 +167,22 @@ model.add(Dense(2, activation='relu'))
 model.summary()
 
 
-adam = optimizers.Adam(lr=0.00005, beta_1=0.9, beta_2=0.999)
+adam = tf.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999)
 # model.compile(loss='hinge', optimizer=adam, metrics=[kmetr.categorical_accuracy])
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy']) ## Minist
+model.compile(optimizer='adam', loss='categorical_crossentropy',              metrics=['categorical_accuracy']) ## Minist
 
 ### Load the model's saved weights.
 # model.load_weights('cnn_4_epoch.h5')
 
 
-# In[ ]:
+# In[12]:
 
 
 # #### plotting model
 plot_model(model,show_shapes = True, to_file='model .png')
 
 
-# In[ ]:
+# In[14]:
 
 
 #### train the model
@@ -189,12 +192,12 @@ plot_model(model,show_shapes = True, to_file='model .png')
 # class_weights = class_weight.compute_class_weight('balanced',
 #                                                  np.unique(y_train),
 #                                                  y_train)
-class_weight = {0: 1,
-                1: 99
-               }
+# class_weight = {0: 5,
+#                 1: 95
+#                }
 
-
-history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=4, class_weight=class_weight)
+history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=1)
+#                     , class_weight=class_weight)
 # history = model.fit(X_train, y_train, epochs=1)
 
 
@@ -202,7 +205,7 @@ history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=4
 
 
 ### Saveing the Model
-model.save_weights('cnn_3_epoch.h5')
+model.save_weights('cnn_1_epoch.h5')
 
 
 # In[ ]:
@@ -228,7 +231,7 @@ print(aupr_val,auc_val)
 # In[ ]:
 
 
-model.history.history
+history.history
 
 
 # In[ ]:
@@ -236,8 +239,8 @@ model.history.history
 
 
 # Plot training & validation accuracy values
-plt.plot(list(range(1,5)),model.history.history['acc'])
-plt.plot(list(range(1,5)),model.history.history['val_acc'])
+plt.plot(list(range(1,5)),history.history['categorical_accuracy'])
+plt.plot(list(range(1,5)),history.history['val_categorical_accuracy'])
 plt.title('Model accuracy')
 plt.ylabel('Accuracy')
 plt.xlabel('Epoch')
@@ -245,8 +248,8 @@ plt.legend(['Train', 'Test'], loc='upper left')
 plt.show()
 
 # Plot training & validation loss values
-plt.plot(list(range(1,5)),model.history.history['loss'])
-plt.plot(list(range(1,5)),model.history.history['val_loss'])
+plt.plot(list(range(1,5)),history.history['loss'])
+plt.plot(list(range(1,5)),history.history['val_loss'])
 plt.title('Model loss')
 plt.ylabel('Loss')
 plt.xlabel('Epoch')
